@@ -1,0 +1,32 @@
+
+
+
+version: '3'
+tasks:
+  docker_build:
+    vars:
+      COMMIT_HASH:
+        sh: "git rev-parse --short HEAD"
+      IMAGE_NAME: db_server
+      VERSION_FILE_NAME: docker_versions.yaml
+      DATETIME: "date +\"%d.%m.%Y %H:%M\""
+    aliases:
+      - db
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Version not found, specify one: -- 1.2.3"
+          exit 1
+        fi
+      - docker build -t {{.IMAGE_NAME}}:{{.CLI_ARGS}}-{{.COMMIT_HASH}} .
+      - |
+        if [ ! -f {{.VERSION_FILE_NAME}} ]; then
+          echo "builds:" > {{.VERSION_FILE_NAME}}
+        fi
+      - echo "- {{.CLI_ARGS}}:" >> {{.VERSION_FILE_NAME}}
+      - >
+        echo "  name: {{.IMAGE_NAME}}:{{.CLI_ARGS}}-{{.COMMIT_HASH}}" >> {{.VERSION_FILE_NAME}}
+      - >
+        echo "  datetime: {{.DATETIME}}" >> {{.VERSION_FILE_NAME}}
+      - echo "Image {{.IMAGE_NAME}}:{{.CLI_ARGS}}-{{.COMMIT_HASH}} built successfully"
+    desc: Build the Docker image with commit and version.
