@@ -3,4 +3,6 @@
 .terraform*
 nginx.conf
 *.tfstate*
+Cargo.lock
+
 

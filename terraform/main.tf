@@ -9,8 +9,12 @@ resource "docker_image" "nginx" {
   name         = "nginx:latest"
   keep_locally = true
 }
+resource "docker_image" "migrator" {
+  name         = "migrate/migrate:latest"
+  keep_locally = true
+}
 data "docker_image" "server" {
-  name = "db_server:1.0.0"
+  name = "db_server:v1.3-6b84a8b"
 }
 
 locals {
@@ -32,6 +36,29 @@ resource "docker_network" "main_network" {
   name = "main_network"
 }
 
+resource "docker_container" "migrator" {
+  image = docker_image.migrator.image_id
+  name  = "migrator"
+  # env = [
+  #   "DATABASE_URL=mysql://${var.mysql_user}:${var.mysql_password}@${docker_container.mysql.name}:${var.mysql_port}/${var.mysql_database}"
+  # ]
+  command = [
+    "-path", "/migrations",
+    "-database", "mysql://${var.mysql_user}:${var.mysql_password}@${docker_container.mysql.name}:${var.mysql_port}/${var.mysql_database}",
+    "up",
+  ]
+  networks_advanced {
+    name = docker_network.main_network.name
+  }
+  volumes {
+    host_path      = "${abspath(path.module)}/../migrations"
+    container_path = "/migrations"
+  }
+  depends_on = [
+    docker_container.mysql
+  ]
+}
+
 resource "docker_container" "mysql" {
   name  = "mysql_db"
   image = docker_image.mysql.image_id
@@ -50,7 +77,7 @@ resource "docker_container" "server" {
   name  = "db_server_${count.index}"
   image = data.docker_image.server.name
   depends_on = [
-    docker_container.mysql
+    docker_container.migrator
   ]
   command = [
     "sh", "-c",
@@ -73,7 +100,8 @@ resource "docker_container" "nginx" {
   name  = "nginx"
   image = docker_image.nginx.image_id
   depends_on = [
-    docker_container.server
+    docker_container.server,
+    local_file.nginx_config
   ]
   networks_advanced {
     name = docker_network.main_network.name
@@ -83,5 +111,8 @@ resource "docker_container" "nginx" {
     container_path = "/etc/nginx/nginx.conf"
     read_only      = true
   }
-
+  ports {
+    internal = 80
+    external = 8080
+  }
 }

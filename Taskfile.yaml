@@ -8,25 +8,27 @@ tasks:
       COMMIT_HASH:
         sh: "git rev-parse --short HEAD"
       IMAGE_NAME: db_server
-      VERSION_FILE_NAME: docker_versions.yaml
-      DATETIME: "date +\"%d.%m.%Y %H:%M\""
+      HISTORY_FILE_NAME: docker_versions.yaml
+      DATETIME: 
+        sh: "date +\"%d.%m.%Y %H:%M\""
+      VERSION: "{{.CLI_ARGS}}"
+      IMAGE_TAG: "{{.IMAGE_NAME}}:{{.VERSION}}-{{.COMMIT_HASH}}"
     aliases:
       - db
+    preconditions:
+      - sh: test -n "{{.CLI_ARGS}}"
+        msg: "Version not found, specify one: -- v1.2.3"
     cmds:
+      - docker build -t {{.IMAGE_TAG}} .
       - |
-        if [ -z "{{.CLI_ARGS}}" ]; then
-          echo "Version not found, specify one: -- 1.2.3"
-          exit 1
+        if [ ! -f {{.HISTORY_FILE_NAME}} ]; then
+          echo "builds:" > {{.HISTORY_FILE_NAME}}
         fi
-      - docker build -t {{.IMAGE_NAME}}:{{.CLI_ARGS}}-{{.COMMIT_HASH}} .
       - |
-        if [ ! -f {{.VERSION_FILE_NAME}} ]; then
-          echo "builds:" > {{.VERSION_FILE_NAME}}
-        fi
-      - echo "- {{.CLI_ARGS}}:" >> {{.VERSION_FILE_NAME}}
-      - >
-        echo "  name: {{.IMAGE_NAME}}:{{.CLI_ARGS}}-{{.COMMIT_HASH}}" >> {{.VERSION_FILE_NAME}}
-      - >
-        echo "  datetime: {{.DATETIME}}" >> {{.VERSION_FILE_NAME}}
-      - echo "Image {{.IMAGE_NAME}}:{{.CLI_ARGS}}-{{.COMMIT_HASH}} built successfully"
+        cat >> {{.HISTORY_FILE_NAME}} <<EOF
+        - {{.VERSION}}:
+          name: {{.IMAGE_TAG}}
+          datetime: {{.DATETIME}}
+        EOF
+      - echo "Image {{.IMAGE_TAG}} built successfully"
     desc: Build the Docker image with commit and version.

@@ -1,17 +1,17 @@
 use axum::{http::StatusCode, response::IntoResponse};
 
+#[derive(Debug, thiserror::Error)]
 pub enum RequestError {
-    DbConnectionError,
+    #[error("Database: {0}")]
+    DbConnectionError(#[from] sqlx::Error),
 }
 impl IntoResponse for RequestError {
     fn into_response(self) -> axum::response::Response {
         match &self {
-            RequestError::DbConnectionError => (StatusCode::INTERNAL_SERVER_ERROR).into_response(),
+            RequestError::DbConnectionError(e) => {
+                tracing::error!("Error during request handling: {e}",);
+                (StatusCode::INTERNAL_SERVER_ERROR).into_response()
+            }
         }
-    }
-}
-impl From<mysql::Error> for RequestError {
-    fn from(_: mysql::Error) -> Self {
-        Self::DbConnectionError
     }
 }

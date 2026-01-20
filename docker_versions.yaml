@@ -1,0 +1,13 @@
+builds:
+- v1.1:
+  name: db_server:v1.1-6b84a8b
+  datetime: 08.01.2026 19:36
+- v1.1:
+  name: db_server:v1.1-6b84a8b
+  datetime: 08.01.2026 19:48
+- v.1.2:
+  name: db_server:v.1.2-6b84a8b
+  datetime: 08.01.2026 19:51
+- v1.3:
+  name: db_server:v1.3-6b84a8b
+  datetime: 08.01.2026 20:59
