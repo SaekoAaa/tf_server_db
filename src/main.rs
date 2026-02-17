@@ -4,14 +4,24 @@ use axum::{
     Json, Router,
     extract::State,
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::{get, post},
 };
+use dotenvy::var;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use serde::{Deserialize, Serialize};
 use sqlx::{MySqlPool, mysql::MySqlPoolOptions};
-use tracing::level_filters::LevelFilter;
+use tokio::signal::unix::{SignalKind, signal};
+use tracing::{info_span, level_filters::LevelFilter};
 
-use crate::request_error::RequestError;
+use crate::{
+    metrics::{http_metrics_middleware, init_metrics},
+    otel::OtelGuard,
+    request_error::RequestError,
+};
+mod metrics;
+mod otel;
 mod request_error;
 struct AppState {
     db_pool: sqlx::MySqlPool,
@@ -116,6 +126,7 @@ async fn main() {
     let address = std::env::var("DB_ADDRESS").expect("DB_ADDRESS env not found");
     let port = std::env::var("DB_PORT").expect("DB_PORT env not found");
     let database = std::env::var("DB_DATABASE").expect("DB_DATABASE env not found");
+    let collector_url = std::env::var("COLLECTOR_URL").ok();
     let app_port = std::env::var("PORT")
         .expect("PORT env not found")
         .parse::<u16>()
@@ -132,11 +143,60 @@ async fn main() {
     let router = Router::new()
         .route("/", get(get_todos).post(add_todo).delete(delete_todo))
         .route("/create", post(create_todo))
+        .layer(middleware::from_fn(http_metrics_middleware))
         .with_state(Arc::new(app_state));
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::new(0, 0, 0, 0), app_port))
         .await
         .unwrap();
     tracing::info!("Listening on port: {}", app_port);
 
-    axum::serve(listener, router).await.unwrap()
+    // Инициализация метрик
+    let metrics_provider = {
+        let use_metrics = var("USE_METRICS").is_ok_and(|t| t == "true");
+        if use_metrics {
+            if let Some(collector_url) = collector_url {
+                let metrics = init_metrics(&format!("{}/metrics", collector_url)).unwrap();
+                Some(metrics)
+            } else {
+                tracing::warn!("USE_METRICS env found, but COLLECTOR_URL env wasnt given");
+                None
+            }
+        } else {
+            None
+        }
+    };
+    let _otel_guard = OtelGuard {
+        meter_provider: metrics_provider,
+    };
+    let main_span = info_span!("app");
+    let _g = main_span.enter();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+    // Задача для ожидания сигналов
+    tokio::spawn(async move {
+        let mut sigint = signal(SignalKind::interrupt()).unwrap();
+        let mut sigterm = signal(SignalKind::terminate()).unwrap();
+
+        tokio::select! {
+            _ = sigint.recv() => {
+                tracing::info!("Received SIGINT");
+            }
+            _ = sigterm.recv() => {
+                tracing::info!("Received SIGTERM");
+            }
+        }
+
+        tx.send(()).await.ok();
+    });
+
+    // Основной сервер
+    let _ = axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            rx.recv().await;
+            tracing::info!("Shutting down gracefully...");
+        })
+        .await
+        .inspect_err(|e| tracing::error!(?e));
+    drop(_g);
+    drop(_otel_guard);
 }

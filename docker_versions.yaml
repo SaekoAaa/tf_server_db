@@ -11,3 +11,9 @@ builds:
 - v1.3:
   name: db_server:v1.3-6b84a8b
   datetime: 08.01.2026 20:59
+- 2.0:
+  name: db_server:2.0-aaf31c3
+  datetime: 17.02.2026 23:12
+- 2.1:
+  name: db_server:2.1-aaf31c3
+  datetime: 18.02.2026 00:39

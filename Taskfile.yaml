@@ -1,7 +1,4 @@
-
-
-
-version: '3'
+version: "3"
 tasks:
   docker_build:
     vars:
@@ -9,8 +6,8 @@ tasks:
         sh: "git rev-parse --short HEAD"
       IMAGE_NAME: db_server
       HISTORY_FILE_NAME: docker_versions.yaml
-      DATETIME: 
-        sh: "date +\"%d.%m.%Y %H:%M\""
+      DATETIME:
+        sh: 'date +"%d.%m.%Y %H:%M"'
       VERSION: "{{.CLI_ARGS}}"
       IMAGE_TAG: "{{.IMAGE_NAME}}:{{.VERSION}}-{{.COMMIT_HASH}}"
     aliases:
@@ -31,4 +28,15 @@ tasks:
           datetime: {{.DATETIME}}
         EOF
       - echo "Image {{.IMAGE_TAG}} built successfully"
+
     desc: Build the Docker image with commit and version.
+  migrate_run:
+    aliases:
+      - mr
+    cmd: "cargo sqlx migrate run --target-version {{.CLI_ARGS}}"
+    desc: Run migration with specific version
+  migrate_revert:
+    aliases:
+      - mrm
+    cmd: "cargo sqlx migrate revert --target-version {{.CLI_ARGS}}"
+    desc: Revert migration with specific version

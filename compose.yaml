@@ -1,7 +1,24 @@
 services:
+  server:
+    image: db_server:2.1-aaf31c3
+    container_name: db_server
+    ports:
+      - 8080:80
+    environment:
+      DB_USER: admin
+      DB_PASSWORD: admin123
+      DB_DATABASE: todo
+      DB_ADDRESS: mysql
+      DB_ROOT_PWD: 123
+      DB_PORT: 3306
+      PORT: 80
+      USE_METRICS: true
+      COLLECTOR_URL: "http://otel-collector:4318/v1"
+    mem_limit: 512m
+    cpus: 1.0
   mysql:
     image: mysql:8.0
-    container_name: mysql
+    container_name: mysql_simple_server
     ports:
       - 3306:3306
     environment:
@@ -9,11 +26,73 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PWD}
       MYSQL_DATABASE: ${DB_DATABASE}
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+  otel-collector:
+    container_name: otel
+    image: otel/opentelemetry-collector-contrib
+    command: --config=/etc/otelcol/config.yaml
+    ports:
+      - "4318:4318" # HTTP
+    #      - "9464:9464"  # Prometheus scrape endpoint
+    volumes:
+      - ./config/otel_collector.yaml:/etc/otelcol/config.yaml:ro
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6:/scripts
+    command: run /scripts/test.js
+    depends_on:
+      - server
+    networks:
+      - default
+  # jaeger:
+  #   image: jaegertracing/jaeger:latest
+  #   container_name: jaeger
+  #   ports:
+  #     - "16686:16686" # Web UI http://localhost:16686
+  #     - "14268:14268"
+  #   expose:
+  #     - "14268"
+  #     - "4317"
+  #     - "4318"
+  #   environment:
+  #     COLLECTOR_OTLP_ENABLED: "true"
+  #     LOG_LEVEL: debug
+  prom:
+    image: prom/prometheus
+    ports:
+      - "9099:9090"
+    command: --config.file=/etc/prometheus/prometheus.yaml
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+    depends_on:
+      - otel-collector
 
-
-
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - gf_security_admin_user=admin
+      - gf_security_admin_password=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prom
+    restart: unless-stopped
+volumes:
+  grafana_data:
   # migrator:
-  #   image: "migrate/migrate:latest" 
+  #   image: "migrate/migrate:latest"
   #   container_name: migrator
   #   volumes:
   #     - ./migrations/:/migrations/
