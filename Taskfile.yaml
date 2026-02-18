@@ -40,3 +40,10 @@ tasks:
       - mrm
     cmd: "cargo sqlx migrate revert --target-version {{.CLI_ARGS}}"
     desc: Revert migration with specific version
+  run_profile_test:
+    aliases:
+      - pt
+    cmd: "docker compose run --rm k6 run {{.CLI_ARGS}} -o opentelemetry"
+    desc: >
+      Run K6 instance with a file provided as argument and output to otel-collector.
+      WARNING: Path must locate test-file inside container: -- /scripts/test.js

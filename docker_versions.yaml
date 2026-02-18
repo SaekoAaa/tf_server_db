@@ -17,3 +17,12 @@ builds:
 - 2.1:
   name: db_server:2.1-aaf31c3
   datetime: 18.02.2026 00:39
+- 2.1.1:
+  name: db_server:2.1.1-c47fd8b
+  datetime: 18.02.2026 19:37
+- 2.1.2:
+  name: db_server:2.1.2-c47fd8b
+  datetime: 18.02.2026 19:47
+- 2.1.3:
+  name: db_server:2.1.3-c47fd8b
+  datetime: 18.02.2026 21:59
