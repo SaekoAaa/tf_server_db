@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG RUST_VERSION=1.86.0
+ARG RUST_VERSION=1.89.0
 ARG APP_NAME=server_with_db
 
 

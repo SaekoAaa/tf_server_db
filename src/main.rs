@@ -1,4 +1,4 @@
-use std::{error::Error, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
+use std::{error::Error, net::Ipv4Addr, ops::Deref, sync::Arc, thread::sleep, time::Duration};
 
 use axum::{
     Json, Router,
@@ -11,20 +11,23 @@ use axum::{
 use dotenvy::var;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use serde::{Deserialize, Serialize};
-use sqlx::{MySqlPool, mysql::MySqlPoolOptions};
+use sqlx::{Database, MySql, MySqlPool, mysql::MySqlPoolOptions, pool::maybe};
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{info_span, level_filters::LevelFilter};
 
 use crate::{
     metrics::{http_metrics_middleware, init_metrics},
     otel::OtelGuard,
+    profiler::{Profiler, maybe_profile, profiling_middleware},
     request_error::RequestError,
 };
 mod metrics;
 mod otel;
+mod profiler;
 mod request_error;
 struct AppState {
     db_pool: sqlx::MySqlPool,
+    profiler: Option<Arc<Profiler>>,
 }
 type ArcState = Arc<AppState>;
 #[derive(thiserror::Error, Debug)]
@@ -58,12 +61,20 @@ struct Todo {
     name: String,
 }
 async fn get_todos(State(state): State<ArcState>) -> Result<impl IntoResponse, RequestError> {
-    let res: Vec<Todo> = sqlx::query_as(
-        r#"
+    let res = maybe_profile(
+        state.profiler.clone(),
+        "sql_query",
+        "get_todos",
+        async || {
+            sqlx::query_as::<_, Todo>(
+                r#"
         select id, name from todos
 "#,
+            )
+            .fetch_all(&state.db_pool)
+            .await
+        },
     )
-    .fetch_all(&state.db_pool)
     .await?;
     Ok((StatusCode::OK, Json::from(res)))
 }
@@ -116,7 +127,7 @@ async fn create_todo(State(state): State<ArcState>) -> Result<impl IntoResponse,
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::DEBUG)
+        .with_max_level(LevelFilter::INFO)
         .init();
     dotenvy::dotenv().inspect_err(|e| tracing::error!("Dotenvy init error: {e}"));
 
@@ -139,17 +150,39 @@ async fn main() {
     tracing::debug!(connection_string, "Connection string");
     let pool = connect_to_database(&connection_string).await.unwrap();
 
-    let app_state = AppState { db_pool: pool };
-    let router = Router::new()
+    let mut profiler: Option<Arc<Profiler>> = None;
+    if let Ok(res) = std::env::var("USE_PROFILING")
+        && res == "true"
+    {
+        let address = std::env::var("PYROSCOPE_URL").inspect_err(|_| {
+            tracing::warn!("Profiling is enabled but PYROSCOPE_URL env is not set")
+        });
+        if let Ok(address) = address {
+            profiler = Profiler::new(&address, "rust_server")
+                .inspect_err(|e| tracing::error!("Failed to start profiler with error: {e}"))
+                .ok()
+                .map(Arc::new);
+        }
+    }
+    let app_state = AppState {
+        db_pool: pool,
+        profiler: profiler.clone(),
+    };
+    let mut router = Router::new()
         .route("/", get(get_todos).post(add_todo).delete(delete_todo))
         .route("/create", post(create_todo))
         .layer(middleware::from_fn(http_metrics_middleware))
         .with_state(Arc::new(app_state));
+    if let Some(profiler) = profiler.clone() {
+        router = router.layer(middleware::from_fn_with_state(
+            profiler,
+            profiling_middleware,
+        ));
+    }
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::new(0, 0, 0, 0), app_port))
         .await
         .unwrap();
     tracing::info!("Listening on port: {}", app_port);
-
     // Инициализация метрик
     let metrics_provider = {
         let use_metrics = var("USE_METRICS").is_ok_and(|t| t == "true");
@@ -199,4 +232,9 @@ async fn main() {
         .inspect_err(|e| tracing::error!(?e));
     drop(_g);
     drop(_otel_guard);
+    if let Some(profiler) = profiler
+        && let Some(inner) = Arc::into_inner(profiler)
+    {
+        inner.stop().unwrap()
+    }
 }
