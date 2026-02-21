@@ -2,6 +2,8 @@ use std::sync::OnceLock;
 
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider, trace::SdkTracerProvider};
 
+use crate::profiler::Profiler;
+
 /// Создает хранилище метрик и дает к нему доступ
 pub fn get_resource(resource_name: String) -> Resource {
     static RESOURCE: OnceLock<Resource> = OnceLock::new();
