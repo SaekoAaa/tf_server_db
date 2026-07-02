@@ -1,4 +1,4 @@
-use std::{error::Error, net::Ipv4Addr, ops::Deref, sync::Arc, thread::sleep, time::Duration};
+use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 
 use axum::{
     Json, Router,
@@ -9,9 +9,8 @@ use axum::{
     routing::{get, post},
 };
 use dotenvy::var;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
 use serde::{Deserialize, Serialize};
-use sqlx::{Database, MySql, MySqlPool, mysql::MySqlPoolOptions, pool::maybe};
+use sqlx::mysql::MySqlPoolOptions;
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{info_span, level_filters::LevelFilter};
 
@@ -239,4 +238,13 @@ async fn main() {
     }
     drop(_g);
     drop(_otel_guard);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    pub fn check_pipeline() {
+        print!("Works");
+        assert!(1_i32.is_positive());
+    }
 }

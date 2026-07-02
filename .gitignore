@@ -5,4 +5,5 @@ nginx.conf
 *.tfstate*
 Cargo.lock
 
+.idea
 
