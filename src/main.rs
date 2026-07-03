@@ -245,6 +245,6 @@ mod tests {
     #[test]
     pub fn check_pipeline() {
         print!("Works");
-        assert!(1_i32.is_positive());
+        assert!(1_i32.is_negative());
     }
 }

@@ -6,9 +6,11 @@ pipeline {
         timeout(time: 30, unit: 'MINUTES') // Prevents jobs from hanging forever
         disableConcurrentBuilds() // Prevents overlapping builds from causing conflicts
     }
-
+    parameters {
+        choice(name: 'DEPLOY_ENV', choices: ['staging', 'production'], description: 'Deploy type?')
+        booleanParam(name: 'DEBUG_MODE', defaultValue: false, description: 'Enable debug?')
+    }
     environment {
-        // For GHCR, the image name MUST be lowercase: ghcr.io/username/image_name
         REGISTRY = "ghcr.io"
         IMAGE_NAME = "${REGISTRY}/saekoaaa/rust-app_2"
         IMAGE_TAG = "${env.BUILD_NUMBER}"
@@ -47,12 +49,28 @@ pipeline {
                     sh """
                     docker buildx build --push \
                         -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                        -t ${IMAGE_NAME}:latest \
+                        -t ${IMAGE_NAME}:${params.DEPLOY_ENV}-latest \
                         --label org.opencontainers.image.source=${WEB_URL} \
                         --provenance=false \
                         .
                     """
                 }
+            }
+        }
+
+        stage('Deploy staging') {
+            steps {
+                echo "Deployed staging build"
+            }
+        }
+
+        stage('Deploy production') {
+            when {
+                expression { params.DEPLOY_ENV == 'production' }
+            }
+            steps {
+                input message: "Deploy production build?", ok: "Deployed"
+                echo "Deploying production build ${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
     }
